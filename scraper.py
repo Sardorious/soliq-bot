@@ -61,10 +61,13 @@ def _scrape_lex(url: str) -> Dict:
         }
 
     # Turli til versiyalarini sinab ko'rish
+    # URL dagi original path ni saqlash (acts yoki docs)
+    path = "acts" if "/acts/" in url else "docs"
     candidate_urls = [
+        f"https://lex.uz/{path}/{doc_id}",
+        f"https://lex.uz/uz/{path}/{doc_id}",
+        f"https://lex.uz/ru/{path}/{doc_id}",
         f"https://lex.uz/docs/{doc_id}",
-        f"https://lex.uz/uz/docs/{doc_id}",
-        f"https://lex.uz/ru/docs/{doc_id}",
     ]
 
     last_error = None
@@ -158,7 +161,7 @@ def _extract_lex_id(url: str) -> Optional[str]:
     https://lex.uz/pages/getact?actid=6453686  → 6453686
     """
     # /docs/ID format
-    m = re.search(r"/docs/(-?\d+)", url)
+    m = re.search(r"/(?:docs|acts|pages)/(-?\d+)", url)
     if m:
         return m.group(1)
     # ?actid=ID format
