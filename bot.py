@@ -16,6 +16,7 @@ from storage import Storage
 from ocr import extract_text
 from analyzer import analyze_text
 from linker import find_related
+from scraper import scrape, is_supported_url
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -170,6 +171,59 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 # FILE HANDLER — asosiy pipeline
 # ─────────────────────────────────────────────
+
+
+async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """lex.uz linkini qabul qilib matnni oladi va tahlil qiladi."""
+    user_id = update.effective_user.id
+    url = update.message.text.strip()
+
+    status_msg = await update.message.reply_text(
+        f"🌐 Link qabul qilindi...\n⏳ Matn yuklanmoqda: `{url[:60]}`",
+        parse_mode="Markdown",
+    )
+
+    # Scraping
+    result = scrape(url)
+
+    if result.get("error") or not result.get("text"):
+        await status_msg.edit_text(
+            f"❌ Matn olib bo\'lmadi.\n`{result.get('error', 'Noma\'lum xato')}`",
+            parse_mode="Markdown",
+        )
+        return
+
+    title = result["title"] or "lex.uz hujjati"
+    text = result["text"]
+
+    # Bazaga saqlash (fayl_id o'rniga URL)
+    book_id = storage.add_book(
+        user_id=user_id,
+        title=title,
+        file_id=url,
+        extension="url",
+        size=len(text.encode()),
+        file_name=url,
+    )
+
+    await status_msg.edit_text(
+        f"✅ *{title[:60]}* saqlandi (ID: `{book_id}`)\n⏳ Tahlil qilinmoqda...",
+        parse_mode="Markdown",
+    )
+
+    # Tahlil
+    analysis = analyze_text(text, title)
+    storage.save_analysis(book_id, analysis)
+
+    # Bog\'liqlik
+    existing = storage.get_books_for_linking(user_id, book_id)
+    related = find_related(analysis, existing)
+
+    await status_msg.delete()
+    await _send_analysis_result(
+        update.message, title, book_id, analysis, related,
+        len(text.encode()), "url"
+    )
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -398,7 +452,7 @@ def _ext_emoji(ext: str) -> str:
     return {
         "pdf": "📕", "epub": "📗", "fb2": "📘",
         "djvu": "📙", "txt": "📄", "mobi": "📱",
-        "doc": "📝", "docx": "📝",
+        "doc": "📝", "docx": "📝", "url": "🌐",
     }.get((ext or "").lower(), "📖")
 
 
@@ -438,6 +492,7 @@ def main():
     app.add_handler(CommandHandler("search", search_books))
     app.add_handler(CommandHandler("info", book_info))
     app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'https?://'), handle_url))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
