@@ -13,6 +13,9 @@ jobs:
   test:
     name: 🧪 Test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Kodni yuklab olish
@@ -35,17 +38,20 @@ jobs:
       - name: Modullar import testi
         run: |
           python -c "
+          import sys, os
+          sys.path.insert(0, os.getcwd())
           from storage import Storage
           from ocr import extract_text
           from analyzer import analyze_text
           from linker import find_related
-          print('✅ Barcha modullar import qilindi')
+          print('Barcha modullar import qilindi')
           "
 
       - name: Storage testi
         run: |
           python -c "
-          import os
+          import sys, os
+          sys.path.insert(0, os.getcwd())
           os.environ['DB_PATH'] = '/tmp/test.db'
           from storage import Storage
           s = Storage()
@@ -64,27 +70,29 @@ jobs:
           assert book['analyzed'] == 1
           s.delete_book(1, book_id)
           assert s.get_book_count(1) == 0
-          print('✅ Storage testlari o\'tdi')
+          print('Storage testlari otdi')
           "
 
       - name: Analyzer testi
         run: |
           python -c "
+          import sys, os
+          sys.path.insert(0, os.getcwd())
           from analyzer import analyze_text
-          text = 'Soliq tizimi va daromad solig\\'i. QQS va aksiz soliqlari. Byudjet to\\'lovlari.'
+          text = 'Soliq tizimi va daromad solighi. QQS va aksiz soliqlari. Byudjet tolovlari.'
           result = analyze_text(text, 'Soliq qollanmasi')
           assert isinstance(result['keywords'], list)
           assert isinstance(result['topics'], list)
           assert isinstance(result['summary'], str)
           assert len(result['keywords']) > 0
-          print('✅ Analyzer testi o\\'tdi')
-          print('   Kalit so\\'zlar:', result['keywords'][:5])
-          print('   Til:', result['language'])
+          print('Analyzer testi otdi, kalit sozlar:', result['keywords'][:5])
           "
 
       - name: Linker testi
         run: |
           python -c "
+          import sys, os
+          sys.path.insert(0, os.getcwd())
           from linker import find_related
           book1 = {
               'id': 1, 'title': 'Soliq qollanmasi',
@@ -100,24 +108,22 @@ jobs:
           related = find_related(new_book, [book1])
           assert len(related) > 0
           assert related[0]['score'] > 0
-          print('✅ Linker testi o\\'tdi')
-          print('   O\\'xshashlik:', related[0]['score'])
+          print('Linker testi otdi, oxshashlik:', related[0]['score'])
           "
 
       - name: OCR modul testi
         run: |
           python -c "
-          import tempfile, os
-          from ocr import extract_text, _extract_txt
-
-          # TXT fayl testi
+          import sys, os, tempfile
+          sys.path.insert(0, os.getcwd())
+          from ocr import extract_text
           with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
               f.write('Soliq qonunchiligi. Daromad solighi va QQS.')
               path = f.name
           text = extract_text(path, 'txt')
           os.unlink(path)
           assert 'Soliq' in text
-          print('✅ OCR (txt) testi o\\'tdi')
+          print('OCR txt testi otdi')
           "
 
   # ─────────────────────────────────────────
@@ -143,18 +149,10 @@ jobs:
           script: |
             set -e
             cd ~/soliq-bot
-
-            echo "📥 Yangi kod yuklanmoqda..."
+            echo "Yangi kod yuklanmoqda..."
             git pull origin main
-
-            echo "📦 Kutubxonalar yangilanmoqda..."
+            echo "Kutubxonalar yangilanmoqda..."
             pip install -r requirements.txt --quiet --break-system-packages
-
-            echo "🔄 Bot qayta ishga tushirilmoqda..."
-            # systemd service bo'lsa:
+            echo "Bot qayta ishga tushirilmoqda..."
             sudo systemctl restart soliq-bot || true
-
-            # yoki pm2 bo'lsa:
-            # pm2 restart soliq-bot || pm2 start bot.py --name soliq-bot
-
-            echo "✅ Deploy muvaffaqiyatli!"
+            echo "Deploy muvaffaqiyatli!"
