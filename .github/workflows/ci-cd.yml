@@ -49,11 +49,13 @@ jobs:
 
       - name: Analyzer testi
         working-directory: ${{ github.workspace }}
+        env:
+          ANTHROPIC_API_KEY: ""
         run: |
           python -c "
           from analyzer import analyze_text
           r = analyze_text('Soliq tizimi va daromad solighi. QQS va aksiz soliqlari.', 'Test')
-          assert len(r['keywords']) > 0
+          assert len(r['keywords']) > 0, 'keywords bosh qaytdi'
           print('Analyzer OK, kalit sozlar:', r['keywords'][:5])
           "
 

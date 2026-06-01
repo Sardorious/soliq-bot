@@ -31,7 +31,7 @@ def analyze_text(text: str, title: str = "") -> Dict:
     Matnni tahlil qiladi.
     Qaytaradi: {keywords, topics, summary, language, raw_text}
     """
-    if not text or len(text.strip()) < 100:
+    if not text or len(text.strip()) < 50:
         return _empty_result()
 
     chunk = text[:ANALYSIS_CHUNK]
@@ -120,7 +120,7 @@ def _analyze_simple(text: str, title: str) -> Dict:
     }
 
     # So'zlarni ajratish (lotin, kirill)
-    words = re.findall(r"[a-zA-ZÀ-ÿа-яА-ЯёЁ'ʻ]{4,}", text.lower())
+    words = re.findall(r"[a-zA-ZÀ-ÿа-яА-ЯёЁ'ʻ]{3,}", text.lower())
     words = [w for w in words if w not in stopwords]
 
     counter = Counter(words)
