@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -19,16 +20,37 @@ class Storage:
         with self._connect() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS books (
-                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id   INTEGER NOT NULL,
-                    title     TEXT    NOT NULL,
-                    file_id   TEXT    NOT NULL,
-                    file_name TEXT,
-                    extension TEXT,
-                    size      INTEGER DEFAULT 0,
-                    date      TEXT    NOT NULL
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     INTEGER NOT NULL,
+                    title       TEXT    NOT NULL,
+                    file_id     TEXT    NOT NULL,
+                    file_name   TEXT,
+                    extension   TEXT,
+                    size        INTEGER DEFAULT 0,
+                    date        TEXT    NOT NULL,
+                    -- OCR + tahlil
+                    raw_text    TEXT    DEFAULT '',
+                    keywords    TEXT    DEFAULT '[]',
+                    topics      TEXT    DEFAULT '[]',
+                    summary     TEXT    DEFAULT '',
+                    language    TEXT    DEFAULT '',
+                    analyzed    INTEGER DEFAULT 0
                 )
             """)
+            # Migratsiya: eski jadvalga yangi ustunlar qo'shish
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(books)")}
+            new_cols = {
+                "raw_text":  "TEXT DEFAULT ''",
+                "keywords":  "TEXT DEFAULT '[]'",
+                "topics":    "TEXT DEFAULT '[]'",
+                "summary":   "TEXT DEFAULT ''",
+                "language":  "TEXT DEFAULT ''",
+                "analyzed":  "INTEGER DEFAULT 0",
+            }
+            for col, definition in new_cols.items():
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE books ADD COLUMN {col} {definition}")
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON books(user_id)")
             conn.commit()
 
@@ -53,6 +75,25 @@ class Storage:
             conn.commit()
             return cur.lastrowid
 
+    def save_analysis(self, book_id: int, analysis: Dict):
+        """OCR + tahlil natijasini saqlash."""
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE books
+                   SET raw_text = ?, keywords = ?, topics = ?,
+                       summary = ?, language = ?, analyzed = 1
+                   WHERE id = ?""",
+                (
+                    analysis.get("raw_text", "")[:50000],
+                    json.dumps(analysis.get("keywords", []), ensure_ascii=False),
+                    json.dumps(analysis.get("topics", []), ensure_ascii=False),
+                    analysis.get("summary", ""),
+                    analysis.get("language", ""),
+                    book_id,
+                ),
+            )
+            conn.commit()
+
     def delete_book(self, user_id: int, book_id: int) -> bool:
         with self._connect() as conn:
             cur = conn.execute(
@@ -70,6 +111,17 @@ class Storage:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_books_for_linking(self, user_id: int, exclude_id: int) -> List[Dict]:
+        """Bog'liqlik hisoblash uchun — raw_text bilan, faqat tahlil qilinganlar."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT id, title, keywords, topics, raw_text
+                   FROM books
+                   WHERE user_id = ? AND id != ? AND analyzed = 1""",
+                (user_id, exclude_id),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def get_book(self, user_id: int, book_id: int) -> Optional[Dict]:
         with self._connect() as conn:
             row = conn.execute(
@@ -82,9 +134,9 @@ class Storage:
             rows = conn.execute(
                 """SELECT * FROM books
                    WHERE user_id = ?
-                     AND (title LIKE ? OR file_name LIKE ?)
+                     AND (title LIKE ? OR file_name LIKE ? OR keywords LIKE ?)
                    ORDER BY id DESC""",
-                (user_id, f"%{query}%", f"%{query}%"),
+                (user_id, f"%{query}%", f"%{query}%", f"%{query}%"),
             ).fetchall()
             return [dict(r) for r in rows]
 
@@ -101,14 +153,12 @@ class Storage:
                 "SELECT COUNT(*) as cnt, COALESCE(SUM(size),0) as total_size FROM books WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
-
             ext_rows = conn.execute(
                 """SELECT extension, COUNT(*) as cnt
                    FROM books WHERE user_id = ?
                    GROUP BY extension ORDER BY cnt DESC""",
                 (user_id,),
             ).fetchall()
-
         by_ext = {r["extension"] or "?": r["cnt"] for r in ext_rows}
         return {
             "total": total_row["cnt"],
