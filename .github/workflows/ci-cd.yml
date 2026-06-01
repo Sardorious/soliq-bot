@@ -158,17 +158,3 @@ jobs:
             # pm2 restart soliq-bot || pm2 start bot.py --name soliq-bot
 
             echo "✅ Deploy muvaffaqiyatli!"
-
-      - name: Deploy natijasini Telegram ga yuborish
-        if: always()
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_NOTIFY_TOKEN }}
-          message: |
-            ${{ job.status == 'success' && '✅' || '❌' }} *Kitob Bot Deploy*
-
-            📌 Branch: `${{ github.ref_name }}`
-            👤 Kim: ${{ github.actor }}
-            💬 Commit: ${{ github.event.head_commit.message }}
-            🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
