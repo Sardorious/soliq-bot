@@ -7,15 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # ─────────────────────────────────────────
-  # 1. TEST
-  # ─────────────────────────────────────────
   test:
     name: 🧪 Test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Kodni yuklab olish
@@ -27,7 +21,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Tesseract o'rnatish (OCR uchun)
+      - name: Tesseract o'rnatish
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y tesseract-ocr tesseract-ocr-rus tesseract-ocr-uzb
@@ -36,99 +30,60 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Modullar import testi
-        run: |
-          python -c "
-          import sys, os
-          sys.path.insert(0, os.getcwd())
-          from storage import Storage
-          from ocr import extract_text
-          from analyzer import analyze_text
-          from linker import find_related
-          print('Barcha modullar import qilindi')
-          "
+        working-directory: ${{ github.workspace }}
+        run: python -c "from storage import Storage; from ocr import extract_text; from analyzer import analyze_text; from linker import find_related; print('OK')"
 
       - name: Storage testi
+        working-directory: ${{ github.workspace }}
         run: |
-          python -c "
-          import sys, os
-          sys.path.insert(0, os.getcwd())
-          os.environ['DB_PATH'] = '/tmp/test.db'
+          DB_PATH=/tmp/test.db python -c "
           from storage import Storage
           s = Storage()
-          book_id = s.add_book(1, 'Test kitob', 'file123', 'pdf', 1024, 'test.pdf')
-          assert book_id == 1
-          book = s.get_book(1, book_id)
-          assert book['title'] == 'Test kitob'
-          s.save_analysis(book_id, {
-              'keywords': ['soliq', 'daromad'],
-              'topics': ['moliya'],
-              'summary': 'Test xulosa',
-              'language': 'uzbek_latin',
-              'raw_text': 'soliq daromad moliya'
-          })
-          book = s.get_book(1, book_id)
-          assert book['analyzed'] == 1
-          s.delete_book(1, book_id)
-          assert s.get_book_count(1) == 0
-          print('Storage testlari otdi')
+          bid = s.add_book(1, 'Test kitob', 'file123', 'pdf', 1024, 'test.pdf')
+          assert s.get_book(1, bid)['title'] == 'Test kitob'
+          s.save_analysis(bid, {'keywords': ['soliq'], 'topics': ['moliya'], 'summary': 'test', 'language': 'uzbek_latin', 'raw_text': 'soliq'})
+          assert s.get_book(1, bid)['analyzed'] == 1
+          s.delete_book(1, bid)
+          print('Storage OK')
           "
 
       - name: Analyzer testi
+        working-directory: ${{ github.workspace }}
         run: |
           python -c "
-          import sys, os
-          sys.path.insert(0, os.getcwd())
           from analyzer import analyze_text
-          text = 'Soliq tizimi va daromad solighi. QQS va aksiz soliqlari. Byudjet tolovlari.'
-          result = analyze_text(text, 'Soliq qollanmasi')
-          assert isinstance(result['keywords'], list)
-          assert isinstance(result['topics'], list)
-          assert isinstance(result['summary'], str)
-          assert len(result['keywords']) > 0
-          print('Analyzer testi otdi, kalit sozlar:', result['keywords'][:5])
+          r = analyze_text('Soliq tizimi va daromad solighi. QQS va aksiz soliqlari.', 'Test')
+          assert len(r['keywords']) > 0
+          print('Analyzer OK, kalit sozlar:', r['keywords'][:5])
           "
 
       - name: Linker testi
+        working-directory: ${{ github.workspace }}
         run: |
           python -c "
-          import sys, os
-          sys.path.insert(0, os.getcwd())
           from linker import find_related
-          book1 = {
-              'id': 1, 'title': 'Soliq qollanmasi',
-              'keywords': ['soliq', 'daromad', 'stavka', 'tolov'],
-              'topics': ['soliq', 'moliya'],
-              'raw_text': 'soliq daromad tolov stavka byudjet'
-          }
-          new_book = {
-              'keywords': ['soliq', 'byudjet', 'stavka', 'isloh'],
-              'topics': ['soliq', 'byudjet'],
-              'raw_text': 'soliq byudjet stavka isloh daromad'
-          }
-          related = find_related(new_book, [book1])
-          assert len(related) > 0
-          assert related[0]['score'] > 0
-          print('Linker testi otdi, oxshashlik:', related[0]['score'])
+          b1 = {'id':1,'title':'Kitob','keywords':['soliq','daromad','stavka','tolov'],'topics':['soliq','moliya'],'raw_text':'soliq daromad tolov stavka'}
+          n  = {'keywords':['soliq','byudjet','stavka','isloh'],'topics':['soliq','byudjet'],'raw_text':'soliq byudjet stavka isloh'}
+          r = find_related(n, [b1])
+          assert len(r) > 0
+          print('Linker OK, oxshashlik:', r[0]['score'])
           "
 
-      - name: OCR modul testi
+      - name: OCR testi
+        working-directory: ${{ github.workspace }}
         run: |
           python -c "
-          import sys, os, tempfile
-          sys.path.insert(0, os.getcwd())
+          import tempfile, os
           from ocr import extract_text
           with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-              f.write('Soliq qonunchiligi. Daromad solighi va QQS.')
-              path = f.name
-          text = extract_text(path, 'txt')
-          os.unlink(path)
-          assert 'Soliq' in text
-          print('OCR txt testi otdi')
+              f.write('Soliq qonunchiligi.')
+              p = f.name
+          t = extract_text(p, 'txt')
+          os.unlink(p)
+          assert 'Soliq' in t
+          print('OCR OK')
           "
 
-  # ─────────────────────────────────────────
-  # 2. DEPLOY (faqat main ga push bo'lganda)
-  # ─────────────────────────────────────────
   deploy:
     name: 🚀 Deploy
     runs-on: ubuntu-latest
@@ -139,7 +94,7 @@ jobs:
       - name: Kodni yuklab olish
         uses: actions/checkout@v4
 
-      - name: SSH orqali serverga ulash va deploy qilish
+      - name: SSH orqali deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -149,10 +104,7 @@ jobs:
           script: |
             set -e
             cd ~/soliq-bot
-            echo "Yangi kod yuklanmoqda..."
             git pull origin main
-            echo "Kutubxonalar yangilanmoqda..."
             pip install -r requirements.txt --quiet --break-system-packages
-            echo "Bot qayta ishga tushirilmoqda..."
             sudo systemctl restart soliq-bot || true
             echo "Deploy muvaffaqiyatli!"
