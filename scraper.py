@@ -153,8 +153,16 @@ def _extract_title(soup: BeautifulSoup) -> str:
 def _extract_lex_id(url: str) -> Optional[str]:
     """
     URL dan hujjat ID sini ajratadi.
-    https://lex.uz/docs/6453686       → 6453686
-    https://lex.uz/uz/docs/-5871129   → -5871129
+    https://lex.uz/docs/6453686                → 6453686
+    https://lex.uz/uz/docs/-5871129            → -5871129
+    https://lex.uz/pages/getact?actid=6453686  → 6453686
     """
-    match = re.search(r"/docs/(-?\d+)", url)
-    return match.group(1) if match else None
+    # /docs/ID format
+    m = re.search(r"/docs/(-?\d+)", url)
+    if m:
+        return m.group(1)
+    # ?actid=ID format
+    m = re.search(r"actid=(-?\d+)", url)
+    if m:
+        return m.group(1)
+    return None
